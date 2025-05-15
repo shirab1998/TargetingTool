@@ -8,7 +8,7 @@ from email.message import EmailMessage
 
 # CONFIGURATION
 st.set_page_config(page_title="Targeting Performance Tool", layout="wide")
-st.title("🎯 Targeting Performance Dashboard")
+st.title(" Targeting Performance Dashboard")
 
 EMAIL = os.getenv("EMAIL_ADDRESS", "automationbot.oms@gmail.com")
 PASSWORD = os.getenv("EMAIL_PASSWORD", "ktxpnxchzwuuhvpd")
@@ -29,21 +29,40 @@ if 'last_df' not in st.session_state:
 
 if uploaded_file:
     try:
-        # Use openpyxl safely with only usable columns
-        df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0, usecols="A:Z")
+        from openpyxl import load_workbook
+        import pandas as pd
+        import tempfile
 
-        df.dropna(how='all', axis=1, inplace=True)  # remove empty columns
-        df.dropna(how='all', axis=0, inplace=True)  # remove empty rows
+        # Save uploaded file to temp location
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp.write(uploaded_file.read())
+            tmp_path = tmp.name
 
-        # Remove total row if it exists as the last row
+        # Load workbook and sheet
+        wb = load_workbook(tmp_path, read_only=True, data_only=True)
+        sheet = wb.active
+
+        # Dynamically get the real data range (handles files with <7000 rows safely)
+        data = list(sheet.iter_rows(values_only=True))
+
+        df = pd.DataFrame(data)
+        df.dropna(how='all', axis=1, inplace=True)
+        df.dropna(how='all', axis=0, inplace=True)
+
+        # Use first non-empty row as header
+        df.columns = df.iloc[0]
+        df = df[1:]
+
+        # Remove total row if it exists
         if df.tail(1).apply(lambda row: row.astype(str).str.contains("total", case=False).any(), axis=1).bool():
             df = df.iloc[:-1]
 
-        st.session_state['last_df'] = df
+        st.session_state['last_df'] = df.reset_index(drop=True)
 
     except Exception as e:
-        st.error(f"❌ Failed to read Excel file: {e}")
+        st.error(f"❌ Failed to read Excel file safely: {e}")
         st.stop()
+
 elif st.session_state['last_df'] is not None:
     df = st.session_state['last_df']
 else:
