@@ -4,7 +4,23 @@ import matplotlib.pyplot as plt
 import io
 import os
 import smtplib
+import openpyxl
 from email.message import EmailMessage
+
+def safe_read_excel(file_obj):
+    wb = openpyxl.load_workbook(file_obj, read_only=True)
+    ws = wb.active
+
+    rows = list(ws.iter_rows(values_only=True))
+    header = rows[0]
+    expected_len = len(header)
+
+    # Keep only rows that match expected column length
+    clean_rows = [header] + [r for r in rows[1:] if r is not None and len(r) == expected_len]
+
+    # Convert to DataFrame
+    df_clean = pd.DataFrame(clean_rows[1:], columns=[str(col).strip() for col in header])
+    return df_clean
 
 # CONFIGURATION
 st.set_page_config(page_title="Targeting Performance Tool", layout="wide")
@@ -32,29 +48,17 @@ if 'last_df' not in st.session_state:
 
 if uploaded_file:
     try:
-        import tempfile
+        df = safe_read_excel(uploaded_file)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            tmp.write(uploaded_file.read())
-            tmp_path = tmp.name
-
-        xls = pd.ExcelFile(tmp_path, engine="openpyxl")
-        df = xls.parse(sheet_name=0, dtype=str)
-
+        # Drop all-null columns & rows again just in case
         df.dropna(how='all', axis=1, inplace=True)
         df.dropna(how='all', axis=0, inplace=True)
-
-        df.columns = df.iloc[0]
-        df = df[1:]
-
-        if df.tail(1).apply(lambda row: row.astype(str).str.contains("total", case=False).any(), axis=1).bool():
-            df = df.iloc[:-1]
 
         st.session_state['last_df'] = df.reset_index(drop=True)
         st.toast("📊 File uploaded and parsed successfully.")
 
     except Exception as e:
-        st.error(f"❌ Failed to read Excel file: {e}")
+        st.error(f"❌ Failed to read Excel file safely: {e}")
         st.stop()
 
 elif st.session_state['last_df'] is not None:
