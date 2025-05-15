@@ -28,8 +28,12 @@ if 'last_df' not in st.session_state:
     st.session_state['last_df'] = None
 
 if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    st.session_state['last_df'] = df
+    try:
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
+        st.session_state['last_df'] = df
+    except Exception as e:
+        st.error(f"❌ Failed to read Excel file: {e}")
+        st.stop()
 elif st.session_state['last_df'] is not None:
     df = st.session_state['last_df']
 else:
