@@ -29,31 +29,22 @@ if 'last_df' not in st.session_state:
 
 if uploaded_file:
     try:
-        from openpyxl import load_workbook
         import pandas as pd
         import tempfile
 
-        # Save uploaded file to temp location
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             tmp.write(uploaded_file.read())
             tmp_path = tmp.name
 
-        # Load workbook and sheet
-        wb = load_workbook(tmp_path, read_only=True, data_only=True)
-        sheet = wb.active
+        xls = pd.ExcelFile(tmp_path, engine="openpyxl")
+        df = xls.parse(sheet_name=0, dtype=str)
 
-        # Dynamically get the real data range (handles files with <7000 rows safely)
-        data = list(sheet.iter_rows(values_only=True))
-
-        df = pd.DataFrame(data)
         df.dropna(how='all', axis=1, inplace=True)
         df.dropna(how='all', axis=0, inplace=True)
 
-        # Use first non-empty row as header
         df.columns = df.iloc[0]
         df = df[1:]
 
-        # Remove total row if it exists
         if df.tail(1).apply(lambda row: row.astype(str).str.contains("total", case=False).any(), axis=1).bool():
             df = df.iloc[:-1]
 
