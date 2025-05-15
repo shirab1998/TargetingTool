@@ -30,6 +30,9 @@ if 'last_df' not in st.session_state:
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file, engine='openpyxl')
+        # Remove total row if it exists as the last row
+        if df.tail(1).apply(lambda row: row.astype(str).str.contains("total", case=False).any(), axis=1).bool():
+            df = df.iloc[:-1]
         st.session_state['last_df'] = df
     except Exception as e:
         st.error(f"❌ Failed to read Excel file: {e}")
