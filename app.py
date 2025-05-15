@@ -29,10 +29,11 @@ if 'last_df' not in st.session_state:
 
 if uploaded_file:
     try:
-        # Read only the first sheet and limit columns
-        df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0, usecols=lambda x: isinstance(x, str) and len(x) < 50)
-        df.dropna(how='all', axis=1, inplace=True)
-        df.dropna(how='all', axis=0, inplace=True)
+        # Use openpyxl safely with only usable columns
+        df = pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0, usecols="A:Z")
+
+        df.dropna(how='all', axis=1, inplace=True)  # remove empty columns
+        df.dropna(how='all', axis=0, inplace=True)  # remove empty rows
 
         # Remove total row if it exists as the last row
         if df.tail(1).apply(lambda row: row.astype(str).str.contains("total", case=False).any(), axis=1).bool():
@@ -43,7 +44,6 @@ if uploaded_file:
     except Exception as e:
         st.error(f"❌ Failed to read Excel file: {e}")
         st.stop()
-
 elif st.session_state['last_df'] is not None:
     df = st.session_state['last_df']
 else:
