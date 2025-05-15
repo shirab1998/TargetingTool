@@ -18,10 +18,13 @@ AM_EMAILS = {
 
 # UPLOAD SECTION
 with st.sidebar:
+    st.header("📤 Upload Report")
     uploaded_file = st.file_uploader("Upload 7-Day Excel Report", type=["xlsx"])
-    send_email_flag = st.checkbox("Enable email preview & sending")
-    test_mode = st.checkbox("🧪 Enable Test Mode for AMs")
-    st.markdown("---")
+    st.divider()
+
+    st.header("⚙️ Options")
+    send_email_flag = st.checkbox("Enable Email Preview & Sending")
+    test_mode = st.checkbox("🧪 Test Mode for AMs")
     st.caption("Last upload is cached until replaced.")
 
 if 'last_df' not in st.session_state:
@@ -29,7 +32,6 @@ if 'last_df' not in st.session_state:
 
 if uploaded_file:
     try:
-        import pandas as pd
         import tempfile
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -49,16 +51,19 @@ if uploaded_file:
             df = df.iloc[:-1]
 
         st.session_state['last_df'] = df.reset_index(drop=True)
+        st.toast("📊 File uploaded and parsed successfully.")
 
     except Exception as e:
-        st.error(f"❌ Failed to read Excel file safely: {e}")
+        st.error(f"❌ Failed to read Excel file: {e}")
         st.stop()
 
 elif st.session_state['last_df'] is not None:
     df = st.session_state['last_df']
+    st.info("Using previously uploaded file.")
 else:
-    st.info("Please upload a report to begin.")
+    st.warning("Please upload a 7-day Excel report to begin.")
     st.stop()
+
 
 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 group_cols = ['AM', 'Publisher', 'Domain', 'Country', 'Device']
@@ -168,7 +173,7 @@ for am, combos in am_groups.items():
         writer.save()
     st.download_button(f"Download for {am}", buffer.getvalue(), file_name=f"{am}_report.xlsx")
 
-# EMAIL SENDING SECTION
+# --- EMAIL SENDING SECTION ---
 if send_email_flag:
     st.markdown("---")
     st.header("📬 Email Results to Selected AMs")
@@ -176,55 +181,62 @@ if send_email_flag:
     selected_ams = [am for am in am_groups if st.checkbox(f"Send to {am}", key=f"email_{am}")]
 
     if st.button("Send Emails"):
-        for am in selected_ams:
-            recipient = AM_EMAILS.get(am)
-            if not recipient:
-                st.warning(f"No email address for {am}")
-                continue
+        with st.spinner("📤 Sending emails..."):
+            for am in selected_ams:
+                recipient = AM_EMAILS.get(am)
+                if not recipient:
+                    st.warning(f"No email address for {am}")
+                    continue
 
-            msg = EmailMessage()
-            msg["Subject"] = f"Your HB Tag Report – {am}"
-            msg["From"] = sender_email
-            msg["To"] = recipient
+                msg = EmailMessage()
+                msg["Subject"] = f"Your HB Tag Report – {am}"
+                msg["From"] = sender_email
+                msg["To"] = recipient
 
-            html_summary = f"""
-            <html>
-                <body>
-                    <p>Hi {am}!</p>
-                    <p>Here is the performance of your HB tags in the past week:</p>
-                    <ul>
-            """
-            for combo in am_groups[am]:
-                html_summary += f"<li><b>{combo['Publisher']} / {combo['Domain']} / {combo['Device']}</b><br>"
-                html_summary += f"Best Day: {combo['Best']} | Worst Day: {combo['Worst']} | Tag: {combo['Tag']}</li><br>"
-            html_summary += """
-                    </ul>
-                    <p>Best regards,<br>The automation bot</p>
-                </body>
-            </html>
-            """
+                # HTML email summary
+                html_summary = f"""
+                <html>
+                    <body>
+                        <p>Hi {am}!</p>
+                        <p>Here is the performance of your HB tags in the past week:</p>
+                        <ul>
+                """
+                for combo in am_groups[am]:
+                    html_summary += f"""
+                        <li><b>{combo['Publisher']} / {combo['Domain']} / {combo['Device']}</b><br>
+                        Best Day: {combo['Best']} | Worst Day: {combo['Worst']} | Tag: {combo['Tag']}</li><br>
+                    """
+                html_summary += """
+                        </ul>
+                        <p>Best regards,<br>The automation bot</p>
+                    </body>
+                </html>
+                """
 
-            msg.set_content(
-                f"Hi {am}!\n\nHere is the performance of your HB tags in the past week.\n\nSee attachment for full report."
-            )
-            msg.add_alternative(html_summary, subtype='html')
+                msg.set_content(
+                    f"Hi {am}!\n\nHere is the performance of your HB tags in the past week.\n\nSee attachment for full report."
+                )
+                msg.add_alternative(html_summary, subtype='html')
 
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                for i, combo in enumerate(am_groups[am]):
-                    combo['Daily Data'].to_excel(writer, sheet_name=f"{combo['Publisher'][:10]}_{i}"[:31], index=False)
-                writer.save()
-            msg.add_attachment(
-                buffer.getvalue(),
-                maintype='application',
-                subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                filename=f"{am}_report.xlsx"
-            )
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    for i, combo in enumerate(am_groups[am]):
+                        combo['Daily Data'].to_excel(writer, sheet_name=f"{combo['Publisher'][:10]}_{i}"[:31], index=False)
+                    writer.save()
 
-            try:
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-                    smtp.login(EMAIL, PASSWORD)
-                    smtp.send_message(msg)
-                    st.success(f"Email sent to {am} ({recipient})")
-            except Exception as e:
-                st.error(f"Failed to email {am}: {e}")
+                msg.add_attachment(
+                    buffer.getvalue(),
+                    maintype='application',
+                    subtype='vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    filename=f"{am}_report.xlsx"
+                )
+
+                try:
+                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                        smtp.login(EMAIL, PASSWORD)
+                        smtp.send_message(msg)
+                        st.success(f"✅ Email sent to {am} ({recipient})")
+                except Exception as e:
+                    st.error(f"❌ Failed to email {am}: {e}")
+
+        st.toast("✅ All selected emails processed.")
